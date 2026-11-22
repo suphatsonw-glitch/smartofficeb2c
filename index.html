@@ -142,7 +142,7 @@ button, input, select, textarea { font: inherit; }
 .login-card select { appearance: none; -webkit-appearance: none; padding-right: 38px; font-weight: 600; background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'><path d='M1 1l6 6 6-6' fill='none' stroke='%231a7a3c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/></svg>"); background-repeat: no-repeat; background-position: right 14px center; }
 .login-card .btn { width: 100%; margin-top: 12px; }
 /* print preview */
-#pv { position: fixed; inset: 0; z-index: 80; background: #dfe6e1; display: flex; flex-direction: column; }
+#pv { position: fixed; inset: 0; z-index: 9500; background: #dfe6e1; display: flex; flex-direction: column; }
 #pv .bar { flex: none; display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: #0d2e1a; color: #fff; }
 #pv .bar b { flex: 1; }
 #pv .sc { flex: 1; overflow: auto; padding: 14px 0; }
@@ -184,6 +184,160 @@ button, input, select, textarea { font: inherit; }
 /* มือถือ: ยกแถบเมนูล่างขึ้นจากขอบจอ 1 นิ้ว ไม่ให้จมใต้แถบเบราว์เซอร์/ปุ่มนำทาง */
 @media (pointer: coarse) { .dock { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px) + 1in) !important; } }
 </style>
+<style>
+.rk-ov { position: fixed; inset: 0; z-index: 9000; background: rgba(10, 30, 18, 0.5); display: flex; align-items: flex-end; justify-content: center; }
+.rk-box { background: #fff; color: #1a2a1a; width: 100%; max-width: 560px; max-height: 92vh; overflow-y: auto; border-radius: 20px 20px 0 0; padding: 16px 16px calc(18px + env(safe-area-inset-bottom, 0px)); font-family: inherit; }
+@media (min-width: 700px) { .rk-ov { align-items: center; } .rk-box { border-radius: 20px; } }
+.rk-box h3 { margin: 0 0 4px; font-size: 18px; color: #145f2f; } .rk-box .rk-sub { margin: 0 0 12px; font-size: 13.5px; color: #5f7f5f; }
+.rk-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.rk-chips button { border: 1.5px solid #c8ddc8; background: #f4f8f5; color: #145f2f; border-radius: 99px; padding: 6px 12px; font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+.rk-chips button.on { background: #e8f5ee; border-color: #2d8a52; }
+.rk-dates { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+.rk-dates label { display: block; font-size: 13px; font-weight: 700; color: #4a6a4a; }
+.rk-dates input { display: block; width: 100%; margin-top: 4px; min-height: 44px; border: 1.5px solid #c8ddc8; border-radius: 10px; padding: 8px 10px; font: inherit; color: #1a2a1a; background: #f4f8f5; }
+.rk-btn { min-height: 46px; border-radius: 12px; border: 1.5px solid #c8ddc8; background: #fff; color: #145f2f; font: inherit; font-weight: 800; padding: 0 14px; cursor: pointer; }
+.rk-btn.pri { background: linear-gradient(135deg, #2d8a52, #1a6b3c); color: #fff; border: 0; } .rk-btn:disabled { opacity: 0.5; }
+.rk-row { display: flex; gap: 8px; flex-wrap: wrap; } .rk-row .rk-btn { flex: 1; min-width: 96px; }
+.rk-res { margin-top: 12px; } .rk-info { background: #f3f8f4; border: 1px solid #d6e4da; border-radius: 12px; padding: 10px 12px; font-size: 14px; line-height: 1.55; margin-bottom: 10px; }
+.rk-err { background: #fdecea; border: 1px solid #f1b0a8; color: #8e1e12; border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 700; }
+.rk-res select { width: 100%; min-height: 44px; border: 1.5px solid #c8ddc8; border-radius: 10px; padding: 6px 10px; font: inherit; color: #1a2a1a; background: #fff; margin-bottom: 8px; }
+.rk-close { margin-top: 10px; width: 100%; }
+</style>
+<script>
+/* ===== RangeKit: ดึงข้อมูลย้อนหลังตามช่วงวันที่ + ส่งออก Excel / CSV (ใช้ร่วมกันทุกแอป) ===== */
+window.RK = (function () {
+  const pad = (n) => (n < 10 ? '0' : '') + n
+  const dk = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+  const xe = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
+  const dTH = (k) => { const p = String(k || '').split('-'); return p.length === 3 ? Number(p[2]) + '/' + Number(p[1]) + '/' + p[0] : String(k || '') }
+  const fname = (s) => String(s).replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '_')
+  function saveBlob(name, blob) {
+    const url = URL.createObjectURL(blob), a = document.createElement('a')
+    a.href = url; a.download = fname(name); a.style.display = 'none'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 8000)
+  }
+  // CSV: ใส่ BOM ให้ Excel อ่านภาษาไทยถูก
+  function csv(name, heads, rows) {
+    const c = (v) => { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) || /^\s|\s$/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v }
+    const txt = '﻿' + [heads].concat(rows).map((r) => r.map(c).join(',')).join('\r\n')
+    saveBlob(name + '.csv', new Blob([txt], { type: 'text/csv;charset=utf-8' }))
+  }
+  // XLSX แบบไม่ต้องใช้ไลบรารี (zip store)
+  const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0 } return t })()
+  const crc32 = (u) => { let c = 0xffffffff; for (let i = 0; i < u.length; i++) c = CRC[(c ^ u[i]) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
+  function zip(files) {
+    const enc = new TextEncoder(), parts = [], cen = []
+    let off = 0
+    files.forEach((f) => {
+      const nm = enc.encode(f.name), data = enc.encode(f.data), crc = crc32(data)
+      const h = new DataView(new ArrayBuffer(30))
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true)
+      h.setUint32(14, crc, true); h.setUint32(18, data.length, true); h.setUint32(22, data.length, true); h.setUint16(26, nm.length, true)
+      parts.push(new Uint8Array(h.buffer), nm, data)
+      const c = new DataView(new ArrayBuffer(46))
+      c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true)
+      c.setUint32(16, crc, true); c.setUint32(20, data.length, true); c.setUint32(24, data.length, true); c.setUint16(28, nm.length, true); c.setUint32(42, off, true)
+      cen.push(new Uint8Array(c.buffer), nm)
+      off += 30 + nm.length + data.length
+    })
+    const csz = cen.reduce((a, x) => a + x.length, 0), e = new DataView(new ArrayBuffer(22))
+    e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csz, true); e.setUint32(16, off, true)
+    return new Blob(parts.concat(cen, [new Uint8Array(e.buffer)]), { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  }
+  function colName(i) { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26) } return s }
+  function xlsx(name, heads, rows, widths, sheet) {
+    const cell = (ref, v, st) => (typeof v === 'number' && isFinite(v)) ? '<c r="' + ref + '"' + (st ? ' s="' + st + '"' : '') + '><v>' + v + '</v></c>' : (v === '' || v == null ? '' : '<c r="' + ref + '" t="inlineStr"' + (st ? ' s="' + st + '"' : '') + '><is><t xml:space="preserve">' + xe(v) + '</t></is></c>')
+    let sd = '<row r="1">' + heads.map((h, i) => cell(colName(i) + '1', h, 1)).join('') + '</row>'
+    rows.forEach((r, k) => { const n = k + 2; sd += '<row r="' + n + '">' + r.map((v, i) => cell(colName(i) + n, v)).join('') + '</row>' })
+    const W = widths || heads.map((h) => Math.max(10, Math.min(40, String(h).length + 6)))
+    const X = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n', NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    const ws = X + '<worksheet xmlns="' + NS + '"><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>' + W.map((w, i) => '<col min="' + (i + 1) + '" max="' + (i + 1) + '" width="' + w + '" customWidth="1"/>').join('') + '</cols><sheetData>' + sd + '</sheetData></worksheet>'
+    const st = X + '<styleSheet xmlns="' + NS + '"><fonts count="2"><font><sz val="11"/><name val="Tahoma"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Tahoma"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1A6B3C"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="2"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs></styleSheet>'
+    saveBlob(name + '.xlsx', zip([
+      { name: '[Content_Types].xml', data: X + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>' },
+      { name: '_rels/.rels', data: X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + R + '/officeDocument" Target="xl/workbook.xml"/></Relationships>' },
+      { name: 'xl/workbook.xml', data: X + '<workbook xmlns="' + NS + '" xmlns:r="' + R + '"><sheets><sheet name="' + xe(String(sheet || 'ข้อมูล').slice(0, 31).replace(/[\\/?*[\]:]/g, '-')) + '" sheetId="1" r:id="rId1"/></sheets></workbook>' },
+      { name: 'xl/_rels/workbook.xml.rels', data: X + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="' + R + '/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="' + R + '/styles" Target="styles.xml"/></Relationships>' },
+      { name: 'xl/styles.xml', data: st },
+      { name: 'xl/worksheets/sheet1.xml', data: ws }
+    ]))
+  }
+  // หน้าต่างเลือกช่วงวันที่ → ดึงข้อมูล → พิมพ์ / Excel / CSV
+  function rangeModal(o) {
+    const today = new Date(), back = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return dk(d) }
+    const mStart = (k) => { const d = new Date(today.getFullYear(), today.getMonth() + k, 1); return dk(d) }
+    const mEnd = (k) => { const d = new Date(today.getFullYear(), today.getMonth() + k + 1, 0); return dk(d) }
+    const presets = [['7', 'ย้อนหลัง 7 วัน', back(6), dk(today)], ['14', '14 วัน', back(13), dk(today)], ['30', '30 วัน', back(29), dk(today)], ['m0', 'เดือนนี้', mStart(0), dk(today)], ['m1', 'เดือนก่อน', mStart(-1), mEnd(-1)]]
+    const def = presets.find((p) => p[0] === String(o.days || 14)) || presets[1]
+    const ov = document.createElement('div')
+    ov.className = 'rk-ov'
+    ov.innerHTML = '<div class="rk-box" role="dialog" aria-label="' + esc(o.title) + '"><h3>' + esc(o.title) + '</h3><p class="rk-sub">' + esc(o.sub || 'ข้อมูลทั้งหมดเก็บในชีต ดึงย้อนหลังได้ทุกวันที่') + '</p>' +
+      '<div class="rk-chips">' + (o.presets === false ? [] : presets).map((p) => '<button type="button" data-rk-p="' + p[0] + '"' + (p === def && !o.from ? ' class="on"' : '') + '>' + p[1] + '</button>').join('') + '</div>' +
+      '<div class="rk-dates"><label>ตั้งแต่วันที่<input type="date" id="rk-from" value="' + (o.from || def[2]) + '"></label><label>ถึงวันที่<input type="date" id="rk-to" value="' + (o.to || def[3]) + '"></label></div>' +
+      '<button type="button" class="rk-btn pri" id="rk-go" style="width:100%">🔎 ดึงข้อมูล</button><div class="rk-res" id="rk-res"></div>' +
+      '<button type="button" class="rk-btn rk-close" id="rk-x">ปิด</button></div>'
+    document.body.appendChild(ov)
+    const $ = (s) => ov.querySelector(s)
+    const close = () => { ov.remove(); document.removeEventListener('keydown', onKey, true) }
+    const onKey = (e) => { if (e.key === 'Escape' && !document.getElementById('pk-ov') && !document.getElementById('pv')) close() }
+    document.addEventListener('keydown', onKey, true)
+    ov.addEventListener('click', (e) => { if (e.target === ov) close() })
+    $('#rk-x').onclick = close
+    ov.querySelectorAll('[data-rk-p]').forEach((b) => { b.onclick = () => { const p = presets.find((x) => x[0] === b.dataset.rkP); $('#rk-from').value = p[2]; $('#rk-to').value = p[3]; ov.querySelectorAll('[data-rk-p]').forEach((x) => x.classList.toggle('on', x === b)); run() } })
+    let busy = false, data = null
+    async function run() {
+      const from = $('#rk-from').value, to = $('#rk-to').value, res = $('#rk-res')
+      if (!from || !to) { res.innerHTML = '<div class="rk-err">เลือกวันที่ให้ครบ</div>'; return }
+      if (from > to) { res.innerHTML = '<div class="rk-err">วันที่เริ่มต้องไม่หลังวันที่สิ้นสุด</div>'; return }
+      if (busy) return
+      busy = true; $('#rk-go').disabled = true; $('#rk-go').textContent = 'กำลังดึงข้อมูล…'; res.innerHTML = ''
+      try { data = await o.run(from, to) } catch (e) { data = null; res.innerHTML = '<div class="rk-err">ดึงข้อมูลไม่สำเร็จ: ' + esc(e && e.message ? e.message : e) + '</div>' }
+      busy = false; $('#rk-go').disabled = false; $('#rk-go').textContent = '🔎 ดึงข้อมูล'
+      if (!data) return
+      const label = dTH(from) + ' – ' + dTH(to)
+      if (!data.rows.length) { res.innerHTML = '<div class="rk-info">ไม่มีข้อมูลช่วง ' + esc(label) + '</div>'; return }
+      res.innerHTML = '<div class="rk-info"><b>ช่วง ' + esc(label) + '</b><br>' + (data.summary || (data.rows.length + ' แถว')) + '</div>' + (data.extra || '') +
+        '<div class="rk-row">' + (data.print ? '<button type="button" class="rk-btn pri" data-rk="print">🖨️ พิมพ์</button>' : '') + '<button type="button" class="rk-btn" data-rk="xlsx">📗 Excel</button><button type="button" class="rk-btn" data-rk="csv">📄 CSV</button></div>'
+      const file = (data.file || o.title) + '_' + from + '_ถึง_' + to
+      res.querySelectorAll('[data-rk]').forEach((b) => {
+        b.onclick = () => {
+          try {
+            if (b.dataset.rk === 'print') data.print(from, to)
+            else if (b.dataset.rk === 'xlsx') xlsx(file, data.heads, data.rows, data.widths, data.sheet || o.title)
+            else csv(file, data.heads, data.rows)
+          } catch (e) { alertBox(e) }
+        }
+      })
+      if (data.bind) data.bind(res, from, to)
+    }
+    const alertBox = (e) => { const r = $('#rk-res'); const d = document.createElement('div'); d.className = 'rk-err'; d.textContent = 'ทำไม่สำเร็จ: ' + (e && e.message ? e.message : e); r.prepend(d) }
+    $('#rk-go').onclick = run
+    if (o.autoRun !== false) run()
+    return { close: close }
+  }
+  // ค้นหาแบบใกล้เคียง: ตรงบางส่วน > ตัวอักษรเรียงตามลำดับ (ไม่ต้องพิมพ์ครบ)
+  const norm = (s) => String(s || '').toLowerCase().replace(/[\s\-_.,()\/:'"+]+/g, '')
+  function fuzzy(q, text) {
+    const t = norm(text), toks = String(q || '').toLowerCase().split(/\s+/).map(norm).filter(Boolean)
+    if (!toks.length) return -1
+    let total = 0
+    for (const k of toks) {
+      const i = t.indexOf(k)
+      if (i >= 0) { total += 1000 - Math.min(i, 500); continue }
+      if (k.length < 3) return -1
+      let last = -1, gaps = 0
+      for (const ch of k) { const j = t.indexOf(ch, last + 1); if (j < 0) return -1; if (last >= 0) gaps += j - last - 1; last = j }
+      if (gaps > k.length * 3) return -1
+      total += 400 - gaps * 10
+    }
+    return total / toks.length
+  }
+  return { saveBlob: saveBlob, csv: csv, xlsx: xlsx, rangeModal: rangeModal, fuzzy: fuzzy, dTH: dTH, dk: dk }
+})()
+</script>
+
 </head>
 <body>
 <script>
@@ -325,7 +479,10 @@ window.APP_CONFIG = {
     q = String(q || '').trim().toLowerCase()
     if (!q) return PRODS.rows.slice(0, 40)
     const words = q.split(/\s+/)
-    return PRODS.rows.filter((p) => { const t = (p.code + ' ' + p.name + ' ' + p.cat).toLowerCase(); return words.every((w) => t.indexOf(w) >= 0) }).slice(0, 40)
+    const ex = PRODS.rows.filter((p) => { const t = (p.code + ' ' + p.name + ' ' + p.cat).toLowerCase(); return words.every((w) => t.indexOf(w) >= 0) })
+    if (ex.length) return ex.slice(0, 40)
+    // ไม่เจอแบบตรงตัว → ค้นหาแบบใกล้เคียง (ไม่ต้องพิมพ์ครบ)
+    return PRODS.rows.map((p) => [RK.fuzzy(q, p.name + ' ' + p.code + ' ' + p.cat), p]).filter((x) => x[0] >= 0).sort((a, b) => b[0] - a[0]).slice(0, 40).map((x) => x[1])
   }
   const units = () => Array.from(new Set(PRODS.rows.map((p) => p.unit).filter(Boolean).concat(['ชิ้น', 'อัน', 'ด้าม', 'กล่อง', 'แพ็ค', 'รีม', 'ม้วน', 'ขวด', 'แกลลอน', 'ห่อ', 'ชุด', 'เครื่อง']))).sort()
 
@@ -385,7 +542,7 @@ window.APP_CONFIG = {
   function renderPin() { document.querySelectorAll('#pin-dots i').forEach((d, i) => d.classList.toggle('on', i < lg.pin.length)); const g = $('#lg-go'); if (g) g.disabled = lg.pin.length !== 4 }
   function pinPress(k) {
     const e = $('#lg-err'); if (e) e.hidden = true
-    if (k === 'C') lg.pin = ''; else if (k === 'B') lg.pin = lg.pin.slice(0, -1); else if (/^\d$/.test(k) && lg.pin.length < 4) lg.pin += k
+    if (k === 'C') lg.pin = ''; else if (k === 'B') lg.pin = lg.pin.slice(0, -1); else if (/^\d$/.test(k) && lg.pin.length < 4) { lg.pin += k; if (lg.pin.length === 4) setTimeout(() => { if (view === 'login' && lg.pin.length === 4) doLogin() }, 160) } // รหัสครบ → เข้าเลย
     renderPin()
     document.querySelectorAll('.fruit-side').forEach((el) => { el.classList.add('pulse'); setTimeout(() => el.classList.remove('pulse'), 320) })
   }
@@ -444,6 +601,7 @@ window.APP_CONFIG = {
     document.querySelectorAll('[data-th]').forEach(async (el) => { const [i, k] = el.dataset.th.split('-').map(Number); const s = await imgSrc(D.items[i].imgs[k]); if (s) el.src = s })
     const dock = $('#dock'); dock.hidden = false
     dock.innerHTML = '<button type="button" class="btn" data-act="print"' + (D.items.length ? '' : ' disabled') + '>🖨️ พิมพ์</button>' +
+      '<button type="button" class="btn" data-act="pr-csv"' + (D.items.length ? '' : ' disabled') + '>📄 CSV</button>' +
       '<button type="button" class="btn pri grow" data-act="save"' + (D.items.length && !saved ? '' : ' disabled') + '>' + (saved ? '✔ บันทึกแล้ว ' + esc(D.no) : '☁️ บันทึกลงชีต (' + D.items.length + ' รายการ)') + '</button>'
   }
   // ----- เพิ่ม / แก้รายการ -----
@@ -561,7 +719,7 @@ window.APP_CONFIG = {
     setTop('สาขา' + branchById(SESSION.branchId).name + ' · ' + SESSION.user, 'hist')
     $('#dock').hidden = true
     const list = HIST || lsGet(K.hist(SESSION.branchId), []) || []
-    $('#view').innerHTML = '<div class="card"><h2>🗂️ ใบขอซื้อที่บันทึกแล้ว · สาขา' + esc(branchById(SESSION.branchId).name) + '</h2><p class="note" style="margin:0">เปิดจากเครื่องไหนก็ได้ — พิมพ์ซ้ำ แก้ไข หรือคัดลอกเป็นใบใหม่</p></div>' +
+    $('#view').innerHTML = '<div class="card"><h2>🗂️ ใบขอซื้อที่บันทึกแล้ว · สาขา' + esc(branchById(SESSION.branchId).name) + '</h2><button type="button" class="btn block" data-act="h-range" style="margin-bottom:10px">📅 ดูย้อนหลังตามช่วงวันที่ · พิมพ์ / Excel / CSV</button><p class="note" style="margin:0">เปิดจากเครื่องไหนก็ได้ — พิมพ์ซ้ำ แก้ไข หรือคัดลอกเป็นใบใหม่</p></div>' +
       (HIST == null ? '<div class="emp">กำลังโหลด…</div>' : '') +
       (list.length ? list.map((h, i) => '<div class="hrow"><div class="t"><b>' + esc(h.no) + '</b><span class="badge">' + h.items.length + ' รายการ</span></div>' +
         '<div class="s">วันที่ ' + esc(dTH(h.date)) + (h.need ? ' · ต้องการ ' + esc(dTH(h.need)) : '') + ' · ' + esc(h.requester) + (h.purpose ? ' · ' + esc(h.purpose) : '') + '<br>' + esc(h.items.slice(0, 3).map((x) => x.name).join(', ')) + (h.items.length > 3 ? ' …' : '') + '</div>' +
@@ -695,6 +853,59 @@ window.APP_CONFIG = {
     return parseDelimited(text)
   }
 
+
+  /* ---------- v15: CSV + ดูย้อนหลังตามช่วงวันที่ ---------- */
+  const PR_HEADS = ['เลขที่', 'วันที่เอกสาร', 'วันที่ต้องการ', 'สาขา', 'ผู้ขอซื้อ', 'วัตถุประสงค์', 'ประเภท', 'แผนก', 'ลำดับ', 'รหัส', 'รายการ', 'จำนวน', 'หน่วย', 'หมายเหตุ', 'จำนวนรูป']
+  const prLines = (pr) => pr.items.map((x, i) => [pr.no || '(ฉบับร่าง)', pr.date, pr.need || '', branchById(SESSION.branchId).name, pr.requester, pr.purpose || '', pr.type || '', pr.dept || '', i + 1, x.code || '', x.name, x.qty, x.unit || '', x.note || '', (x.imgs || x.files || []).length])
+  function prCsv() {
+    if (!D.items.length) return
+    try { RK.csv('ใบขอซื้อ_' + branchById(SESSION.branchId).name + '_' + (D.no || 'ร่าง_' + D.date), PR_HEADS, prLines(D)); toast('ส่งออก CSV แล้ว') } catch (e) { toast('ส่งออกไม่สำเร็จ: ' + e.message, 'err', 4000) }
+  }
+  function histRange() {
+    const bn = branchById(SESSION.branchId).name
+    RK.rangeModal({
+      title: '📅 ใบขอซื้อย้อนหลัง · สาขา' + bn, file: 'ใบขอซื้อ_' + bn, sheet: 'ใบขอซื้อ', days: 30,
+      run: async (from, to) => {
+        const d = await api('officeListPR', { from: from, to: to })
+        const prs = (d.prs || []).slice().sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : String(a.no) < String(b.no) ? -1 : 1))
+        const rows = []
+        prs.forEach((h) => prLines(prFromHist(h)).forEach((l) => rows.push(l)))
+        return {
+          heads: PR_HEADS, rows: rows, widths: [20, 12, 12, 14, 14, 22, 12, 12, 7, 12, 34, 9, 9, 24, 9],
+          summary: prs.length + ' ใบ · ' + rows.length + ' รายการ',
+          extra: '<button type="button" class="rk-btn" id="rk-show" style="width:100%;margin-bottom:8px">🗂️ แสดงใบเหล่านี้ในหน้าประวัติ (พิมพ์ทีละใบ/แก้ไข/คัดลอก)</button>',
+          print: (f, t) => printPrList(prs, f, t),
+          bind: (res) => { res.querySelector('#rk-show').onclick = () => { HIST = d.prs || []; document.querySelector('.rk-ov').remove(); view = 'hist'; render(); toast('แสดง ' + HIST.length + ' ใบ ช่วง ' + dTH(from) + ' – ' + dTH(to)) } }
+        }
+      }
+    })
+  }
+  function printPrList(prs, from, to) {
+    const pv = document.createElement('div')
+    pv.id = 'pv'
+    const bn = branchById(SESSION.branchId).name, C = CFG.COMPANY
+    pv.innerHTML = '<div class="bar"><b>🖨️ สรุปใบขอซื้อ ' + esc(dTH(from)) + ' – ' + esc(dTH(to)) + '</b><button type="button" class="btn pri" id="pv-go">🖨️ สั่งพิมพ์</button><button type="button" class="btn" id="pv-x">ปิด</button></div><div class="sc"><p class="hint">ตัวอย่าง A4 — ตรวจแล้วกด "สั่งพิมพ์"</p><div id="pv-pages"></div></div>'
+    document.body.appendChild(pv)
+    const close = () => { pv.remove(); window.removeEventListener('resize', fit) }
+    $('#pv-x', pv).onclick = close
+    $('#pv-go', pv).onclick = () => window.print()
+    const lines = []
+    prs.forEach((h) => { lines.push({ sec: h }); h.items.forEach((x, i) => lines.push({ x: x, i: i })) })
+    const per = 26, pages = Math.max(1, Math.ceil(lines.length / per))
+    let out = ''
+    for (let pg = 0; pg < pages; pg++) {
+      const part = lines.slice(pg * per, pg * per + per)
+      out += '<div class="pg"><div class="pno">หน้า ' + (pg + 1) + '/' + pages + '</div><div class="co"><b>' + esc(C.name) + '</b></div>' +
+        '<div class="ttl">สรุปใบขอซื้อ (PURCHASE REQUEST) · สาขา' + esc(bn) + '</div><div style="text-align:center;margin:-2mm 0 4mm">ช่วงวันที่ ' + esc(dTH(from)) + ' – ' + esc(dTH(to)) + ' · ' + prs.length + ' ใบ</div>' +
+        '<table class="f"><colgroup><col style="width:14mm"><col><col style="width:18mm"><col style="width:18mm"><col style="width:50mm"></colgroup><thead><tr><th>ลำดับ</th><th>รายการ</th><th>จำนวน</th><th>หน่วย</th><th>หมายเหตุ</th></tr></thead><tbody>' +
+        part.map((l) => l.sec ? '<tr><td colspan="5" style="background:#e8f5ee;font-weight:800">' + esc(l.sec.no) + ' · วันที่ ' + esc(dTH(l.sec.date)) + (l.sec.need ? ' · ต้องการ ' + esc(dTH(l.sec.need)) : '') + ' · ' + esc(l.sec.requester) + (l.sec.purpose ? ' · ' + esc(l.sec.purpose) : '') + '</td></tr>'
+          : '<tr><td class="c">' + (l.i + 1) + '</td><td>' + esc(l.x.name) + '</td><td class="n">' + fmtNum(l.x.qty) + '</td><td class="c">' + esc(l.x.unit) + '</td><td>' + esc(l.x.note || '') + '</td></tr>').join('') +
+        '</tbody></table></div>'
+    }
+    $('#pv-pages', pv).innerHTML = out
+    function fit() { const w = pv.querySelector('.sc').clientWidth - 16, full = 794; pv.querySelectorAll('.pg').forEach((g) => { g.style.zoom = w < full ? String(Math.max(0.3, w / full)) : '' }) }
+    fit(); window.addEventListener('resize', fit)
+  }
   /* ---------- พิมพ์ (ใบขอซื้อ + ใบแนบรูป 4 รูป/หน้า) ---------- */
   async function printPr(pr) {
     const pv = document.createElement('div')
@@ -756,6 +967,8 @@ window.APP_CONFIG = {
     else if (act === 'clear') { if (await ask('🧹 ล้างข้อมูลในหน้า', 'ล้างรายการและข้อมูลที่กรอกทั้งหมด แล้วเริ่มใบขอซื้อใหม่' + (D.savedAt ? ' (ใบ ' + D.no + ' ที่บันทึกแล้วยังอยู่ในชีตและในแท็บประวัติ)' : ' — ฉบับร่างนี้ยังไม่ได้บันทึก จะหายไป'), 'ล้างข้อมูล', true)) { D = newDraft(); saveDraft(false); render(); toast('ล้างข้อมูลแล้ว — เริ่มใบใหม่') } }
     else if (act === 'save') savePr()
     else if (act === 'print') printPr(D)
+    else if (act === 'pr-csv') prCsv()
+    else if (act === 'h-range') histRange()
     else if (act === 'new') { if (!D.dirty || await ask('📄 เริ่มใบใหม่', 'ยังไม่ได้บันทึกการแก้ไข — เริ่มใบใหม่เลย?', 'เริ่มใบใหม่', true)) { D = newDraft(); saveDraft(false); render() } }
     else if (act === 'h-print') printPr(prFromHist((HIST || [])[i]))
     else if (act === 'h-edit' || act === 'h-copy') {
